@@ -5,23 +5,27 @@ from OpenGL.GLU import *
 import numpy as np
 import math
 
-display = [1366, 768]
-obj_path = "Objects/rocket.obj"
-tex_path = "Objects/rocket.png"
+display = [800, 600]
+obj_path = "rocket.obj"
+tex_path = "rocket.png"
 flying_move = 0.05
 
-def compute_normal(v1, v2, v3): # Calcula a normal para uma face a partir de 3 vértices
+'''def compute_normal(v1, v2, v3): # Calcula a normal para uma face a partir de 3 vértices
     u = np.subtract(v2, v1)
     v = np.subtract(v3, v1)
     normal = np.cross(u, v)  # Produto vetorial
     normal = normal / np.linalg.norm(normal)  # Normalização
-    return normal
+    return normal'''
 
 def load_obj(file_path): # Carrega o objeto com os vértices, coordenadas de textura e as faces
     vertices = []
     tex_coords = []
     faces = []
     normals = []
+    materials = {}
+    current_material = None
+
+    mtl_file = None
 
     with open(file_path, 'r') as obj_file:
         for line in obj_file:
@@ -29,27 +33,35 @@ def load_obj(file_path): # Carrega o objeto com os vértices, coordenadas de tex
             if not parts:
                 continue
 
-            if parts[0] == 'v':  # Lê vértices
+            if parts[0] == 'mtllib':  # Carrega o arquivo .mtl
+                mtl_file = parts[1]
+                materials = load_mtl(mtl_file) if mtl_file else {}
+            elif parts[0] == 'usemtl':  # Define o material atual
+                current_material = parts[1]
+            elif parts[0] == 'v':  # Vértices
                 vertices.append([float(x) for x in parts[1:4]])
-            elif parts[0] == 'vt':  # Lê coordenadas de textura
+            elif parts[0] == 'vt':  # Coordenadas de textura
                 tex_coords.append([float(x) for x in parts[1:3]])
-            elif parts[0] == 'f':  # Lê faces
+            elif parts[0] == 'vn':  # Normais dos vértices
+                normals.append([float(x) for x in parts[1:4]])
+            elif parts[0] == 'f':  # Faces
                 face = []
                 for vertex in parts[1:]:
                     indices = vertex.split('/')
-                    v_idx = int(indices[0]) - 1  # Índice do vértice
-                    vt_idx = int(indices[1]) - 1 if len(indices) > 1 and indices[1] else None  # Índice da textura
-                    face.append((v_idx, vt_idx))
+                    v_idx = int(indices[0]) - 1
+                    vt_idx = int(indices[1]) - 1 if len(indices) > 1 and indices[1] else None
+                    vn_idx = int(indices[2]) - 1 if len(indices) > 2 and indices[2] else None
+                    face.append((v_idx, vt_idx, vn_idx, current_material))
                 faces.append(face)
 
-                # Calcular normal para cada face
-                v1 = np.array(vertices[face[0][0]])
+                # Calcula a normal
+                '''v1 = np.array(vertices[face[0][0]])
                 v2 = np.array(vertices[face[1][0]])
                 v3 = np.array(vertices[face[2][0]])
                 normal = compute_normal(v1, v2, v3)
-                normals.append(normal)
+                normals.append(normal)'''
 
-    return vertices, tex_coords, faces, normals
+    return vertices, tex_coords, faces, normals, materials
 
 def setup_lighting():
     glEnable(GL_LIGHTING)
@@ -72,16 +84,29 @@ def setup_lighting():
     glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular)
     glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess)
 
-def render_model(vertices, tex_coords, faces, normals):
-    glBegin(GL_TRIANGLES)
+def render_model(vertices, tex_coords, faces, normals, materials):
+    current_material = None
     for i, face in enumerate(faces):
+        material_name = face[0][2]  # Material associado à face
+        if material_name != current_material:
+            current_material = material_name
+            material = materials.get(current_material, {})
+            kd = material.get("Kd", [1.0, 1.0, 1.0])
+            glMaterialfv(GL_FRONT, GL_DIFFUSE, kd + [1.0])
+            
+            if material.get("map_Kd"):
+                texture_path = material["map_Kd"]
+                # Carregar e aplicar a textura (similar ao já implementado para rocket.png)
+
+        glBegin(GL_TRIANGLES)
         for vertex in face:
-            v_idx, vt_idx = vertex
-            if vt_idx is not None and vt_idx < len(tex_coords):  # Verifique se o índice de textura é válido
+            v_idx, vt_idx, vn_idx, _ = vertex
+            if vt_idx is not None and vt_idx < len(tex_coords):
                 glTexCoord2f(*tex_coords[vt_idx])
-            glNormal3f(*normals[i])  # Usar normal para cada face
-            glVertex3f(*vertices[v_idx])  # Usar vértice para cada face
-    glEnd()
+            if vn_idx is not None and vn_idx < len(normals):
+                glNormal3f(*normals[vn_idx])
+            glVertex3f(*vertices[v_idx])
+        glEnd()
 
 def move_object(x, y, z):
     glTranslatef(x, y, z)
@@ -96,6 +121,39 @@ def reset():
     glTranslatef(0.0, 0.0, -3)
     glScale(0.1, 0.1, 0.1)
 
+def load_mtl(file_path):
+    materials = {}
+    current_material = None
+
+    with open(file_path, 'r') as mtl_file:
+        for line in mtl_file:
+            parts = line.split()
+            if not parts:
+                continue
+
+            if parts[0] == 'newmtl':  # Novo material
+                current_material = parts[1]
+                materials[current_material] = {
+                    "Kd": [1.0, 1.0, 1.0],  # Difusa (branco por padrão)
+                    "Ka": [0.0, 0.0, 0.0],  # Ambiente (preto por padrão)
+                    "Ks": [0.0, 0.0, 0.0],  # Especular (preto por padrão)
+                    "Ns": 0.0,             # Brilho
+                    "map_Kd": None          # Textura difusa
+                }
+            elif parts[0] == 'Kd':  # Cor difusa
+                materials[current_material]["Kd"] = [float(x) for x in parts[1:4]]
+            elif parts[0] == 'Ka':  # Cor ambiente
+                materials[current_material]["Ka"] = [float(x) for x in parts[1:4]]
+            elif parts[0] == 'Ks':  # Cor especular
+                materials[current_material]["Ks"] = [float(x) for x in parts[1:4]]
+            elif parts[0] == 'Ns':  # Expoente especular
+                materials[current_material]["Ns"] = float(parts[1])
+            elif parts[0] == 'map_Kd':  # Textura difusa
+                materials[current_material]["map_Kd"] = parts[1]
+
+    return materials
+
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode(display, pygame.DOUBLEBUF | pygame.OPENGL)
@@ -104,7 +162,7 @@ def main():
     glScale(0.1, 0.1, 0.1)
     glClearColor(0.1, 0.1, 0.1, 1.0)
 
-    vertices, tex_coords, faces, normals = load_obj(obj_path)
+    vertices, tex_coords, faces, normals, materials = load_obj(obj_path)
     
     setup_lighting()
 
@@ -181,7 +239,7 @@ def main():
         move_object(x_move, y_move, z_move)
         rotate_object(rotate_x, rotate_y)
         glBindTexture(GL_TEXTURE_2D, rocket_texture_id)
-        render_model(vertices, tex_coords, faces, normals)
+        render_model(vertices, tex_coords, faces, normals, materials)
         
         pygame.display.flip()
         clock.tick(60)
