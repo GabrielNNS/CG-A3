@@ -89,12 +89,6 @@ def move_object(x, y, z):
 def rotate_object(rotate_x, rotate_y):
     glRotatef(rotate_x, 1, 0, 0)  
     glRotatef(rotate_y, 0, 1, 0)
-
-def zoom_cam(value):
-    glLoadIdentity()
-    gluPerspective(value, (display[0] / display[1]), 0.1, 50.0)
-    glTranslatef(0.0, 0.0, -3)
-    glScale(0.1, 0.1, 0.1)
     
 def reset():
     glLoadIdentity()

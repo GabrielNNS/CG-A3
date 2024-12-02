@@ -7,6 +7,7 @@
 - Lucas Rodrigues Lança
 
 ## Requisitos
+- Python 3.12.7
 - pygame 2.6.0
 - PyOpenGL 3.1.7
 - numpy 2.1.2
