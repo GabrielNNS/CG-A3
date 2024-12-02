@@ -3,10 +3,12 @@ from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import numpy as np
+import math
 
-display = [800, 600]
-obj_path = "final_rocket2.obj"
-tex_path = "final_texture2.png"
+display = [1366, 768]
+obj_path = "Objects/rocket.obj"
+tex_path = "Objects/rocket.png"
+flying_move = 0.05
 
 def compute_normal(v1, v2, v3): # Calcula a normal para uma face a partir de 3 vértices
     u = np.subtract(v2, v1)
@@ -87,24 +89,30 @@ def move_object(x, y, z):
 def rotate_object(rotate_x, rotate_y):
     glRotatef(rotate_x, 1, 0, 0)  
     glRotatef(rotate_y, 0, 1, 0)
+
+def zoom_cam(value):
+    glLoadIdentity()
+    gluPerspective(value, (display[0] / display[1]), 0.1, 50.0)
+    glTranslatef(0.0, 0.0, -3)
+    glScale(0.1, 0.1, 0.1)
     
 def reset():
     glLoadIdentity()
-    gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
-    glTranslatef(0.0, 0.0, -5)
+    gluPerspective(20, (display[0] / display[1]), 0.1, 50.0)
+    glTranslatef(0.0, 0.0, -3)
     glScale(0.1, 0.1, 0.1)
 
 def main():
     pygame.init()
     screen = pygame.display.set_mode(display, pygame.DOUBLEBUF | pygame.OPENGL)
-    gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
-    glTranslatef(0.0, 0.0, -5)
+    gluPerspective(20, (display[0] / display[1]), 0.1, 50.0)
+    glTranslatef(0.0, 0.0, -3)
     glScale(0.1, 0.1, 0.1)
     glClearColor(0.1, 0.1, 0.1, 1.0)
 
     vertices, tex_coords, faces, normals = load_obj(obj_path)
     
-    #setup_lighting()
+    setup_lighting()
 
     print("Vértices carregados:", len(vertices))
     print("Coordenadas de textura carregadas:", len(tex_coords))
@@ -114,8 +122,8 @@ def main():
     texture_data = pygame.image.tostring(texture_surface, "RGB", True)
     width, height = texture_surface.get_size()
 
-    texture_id = glGenTextures(1)
-    glBindTexture(GL_TEXTURE_2D, texture_id)
+    rocket_texture_id = glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, rocket_texture_id)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture_data)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -126,6 +134,9 @@ def main():
     glFrontFace(GL_CCW)
     glEnable(GL_DEPTH_TEST) 
     glDepthFunc(GL_LEQUAL)
+    
+    time_elapsed = 0  # Tempo acumulado para a animação do voo
+    flying_offset = 0  # Deslocamento no eixo Y devido à animação
 
     clock = pygame.time.Clock()
     while True:
@@ -151,9 +162,9 @@ def main():
         if teclas[K_d]:
             x_move += 0.5  # Mover para a direita
         if teclas[K_q]:
-            z_move += 5  # Zoom
+            z_move += 5  # Zoom      
         if teclas[K_e]:
-            z_move -= 5  # Zoom
+            z_move -= 5  # Zoom         
                         
         if teclas[K_LEFT]:
             rotate_y -= 4  # Girar para a esquerda
@@ -167,9 +178,15 @@ def main():
         if teclas[K_r]: # Reseta tudo :3
             reset()
 
+        time_elapsed += clock.get_time() / 1000.0  # Atualizar tempo acumulado
+        flying_offset = math.sin(time_elapsed) * 0.01  # Oscilação suave (frequência e amplitude ajustáveis)
+        y_move += flying_offset
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
         move_object(x_move, y_move, z_move)
-        rotate_object(rotate_x, rotate_y) 
+        rotate_object(rotate_x, rotate_y)
+        glBindTexture(GL_TEXTURE_2D, rocket_texture_id)
         render_model(vertices, tex_coords, faces, normals)
         
         pygame.display.flip()
